@@ -1,0 +1,90 @@
+#include <HIDKeyboard.h>
+#include <RCSwitch.h>
+#include <IRremote.h>  // corrected include
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+#include <SoftwareSerial.h>
+
+#define OLED_RESET 4
+#define signalPin  2
+#define pushButton 5
+#define screensavertime 30 //screensaver popup time
+
+#define analogInPin1 A0  // Analog input pin for joystick X
+#define analogInPin2 A1  // Analog input pin for joystick Y
+
+Adafruit_SSD1306 display(OLED_RESET);
+RCSwitch mySwitch = RCSwitch();
+SoftwareSerial bluetoothSerial(10, 11); // RX, TX
+
+uint16_t sensorValue1 = 0;
+uint16_t sensorValue2 = 0;
+uint8_t buttonState = 0;
+
+void setup() {
+  pinMode(pushButton, INPUT_PULLUP);  // Use INPUT_PULLUP for internal pull-up resistor
+  pinMode(signalPin, OUTPUT);
+  digitalWrite(signalPin, LOW);
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.clearDisplay();
+  display.display();
+
+  Serial.begin(9600);
+  bluetoothSerial.begin(9600);
+
+  mySwitch.enableReceive(1);
+  mySwitch.enableTransmit(signalPin);
+}
+
+void loop() {
+  sensorValue1 = analogRead(analogInPin1);
+  sensorValue2 = analogRead(analogInPin2);
+  buttonreading();
+  
+  // Handle joystick inputs
+  // Display joystick values on OLED screen
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Joystick X: ");
+  display.println(sensorValue1);
+  display.setCursor(0, 10);
+  display.print("Joystick Y: ");
+  display.println(sensorValue2);
+  display.display();
+
+  // Handle button press
+  if (buttonState == LOW) {
+    display.clearDisplay();
+    display.setCursor(0, 20);
+    display.println("Button Pressed");
+    display.display();
+    delay(500); // Debounce delay
+  }
+
+  // Handle Bluetooth data
+  while (bluetoothSerial.available()) {
+    char c = bluetoothSerial.read();
+    Serial.write(c); // Print Bluetooth data to serial monitor
+  }
+
+  // Handle 433 MHz receiver data
+  if (mySwitch.available()) {
+    int value = mySwitch.getReceivedValue();
+    Serial.print("Received value from 433 MHz receiver: ");
+    Serial.println(value);
+    mySwitch.resetAvailable();
+  }
+}
+
+void buttonreading() {
+  static int lastButtonState = HIGH;
+  int reading = digitalRead(pushButton);
+  if (reading != lastButtonState) {
+    delay(10); // Debounce delay
+  }
+  lastButtonState = reading;
+  buttonState = reading;
+}

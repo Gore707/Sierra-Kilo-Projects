@@ -1,0 +1,94 @@
+#include <SoftwareSerial.h>
+#include <RH_ASK.h> //433MHz Library
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Define pin configurations
+#define RX_PIN 10 // Receiver data pin
+#define TX_PIN 11 // Transmitter data pin
+#define JOYSTICK_X A0
+#define JOYSTICK_Y A1
+
+// Initialize 433MHz RF driver
+RH_ASK rf_driver(2000, RX_PIN, TX_PIN, 0);
+
+// Initialize Bluetooth module
+SoftwareSerial bluetooth(2, 3); // RX, TX pins for Bluetooth module
+
+// Define OLED parameters
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Define Flipper logo bitmap array
+const unsigned char flipperLogo[] PROGMEM = {
+  // Bitmap data goes here
+};
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+
+  // Display Flipper logo
+  display.clearDisplay();
+  display.drawBitmap(0, 0, flipperLogo, 128, 64, WHITE);
+  display.display();
+  delay(2000); // Display the logo for 2 seconds
+
+  // Initialize RF driver
+  if (!rf_driver.init()) {
+    Serial.println("RF driver init failed");
+  }
+
+  // Initialize Bluetooth
+  bluetooth.begin(9600); // Start serial communication with Bluetooth module
+
+  // Clear the display buffer
+  display.clearDisplay();
+}
+
+void loop() {
+  // Read joystick position
+  int joystick_x = analogRead(JOYSTICK_X);
+  int joystick_y = analogRead(JOYSTICK_Y);
+  Serial.print("Joystick position X: ");
+  Serial.print(joystick_x);
+  Serial.print(", Y: ");
+  Serial.println(joystick_y);
+
+  // Read Bluetooth data
+  if (bluetooth.available()) {
+    char receivedChar = bluetooth.read();
+    Serial.println(receivedChar);
+  }
+
+  // RF communication
+  sendDataVia433MHz();
+  receiveDataVia433MHz();
+}
+
+void sendDataVia433MHz() {
+  const char *dataToSend = "Hello, World!";
+  rf_driver.send((uint8_t *)dataToSend, strlen(dataToSend));
+  rf_driver.waitPacketSent();
+}
+
+void receiveDataVia433MHz() {
+  uint8_t buf[50];
+  uint8_t buflen = sizeof(buf);
+  if (rf_driver.recv(buf, &buflen)) {
+    Serial.print("Received: ");
+    Serial.println((char*)buf);
+
+    // Transmit the received data
+    rf_driver.send(buf, buflen);
+    rf_driver.waitPacketSent();
+  }
+}

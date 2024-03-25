@@ -1,0 +1,462 @@
+{\rtf1\ansi\deff0\nouicompat{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
+{\*\generator Riched20 10.0.19041}\viewkind4\uc1 
+\pard\sa200\sl276\slmult1\f0\fs22\lang9 //1.01 Beta\par
+//////////////////////////////////////////\par
+// Flipper Zero Arduino 9-1-2023     ///\par
+//       MaDe By DeXtErBoT  TX+RX      ///\par
+//////////////////////////////////////////\par
+// wil store 2 keys in eeprom after recieved one or 2 , NOTE !\par
+// third key wil replacing the first key again onley 2 keys max fit in storage //\par
+// wil remember the keys after power off , and reload them again //\par
+// to use the memory storage keys press left for using storage 1 and right for storage 2 key in main logo screen //\par
+// it also wil store the bit rate type of the key //\par
+// pushing joystick up wil transmit a Tesla charge point key //\par
+// fast push button wil send you to menu ,in menu you do 2 second long press to get in the selected subject , RX or TX or BACK //\par
+// wil make things better , enjoy this Beta version .//\par
+///////////////////////////\par
+//#include <HIDKeyboard.h>\par
+//HIDKeyboard keyboard;\par
+//#define debug1  // debug  //debug1 for analog inputs //\par
+//#define badusb  // Bad USB ON !\par
+////////////////////////////////////////////\par
+//#define KEY_DELAY 50\par
+//const char command [] = "echo hello hackers";\par
+//#include <IRremote.h>\par
+////////////////////////////////////////////\par
+#include <EEPROM.h>\par
+////////////////////////////////////////////\par
+#include <Wire.h>\par
+#include <Adafruit_GFX.h>\par
+#include <Adafruit_SSD1306.h>\par
+#define OLED_RESET 4\par
+#define ARDUINO_RESET 5\par
+Adafruit_SSD1306 display(OLED_RESET);\par
+////////////////////////////////////////////////////////\par
+#include "images.h"  // images i use\par
+#include "TeslaBeacon.h" // beacon code for tesla charge port\par
+//////////////////////////////////\par
+#define signalPin  2\par
+#define ledPinP 13\par
+#define pushButton 5\par
+#define screensavertime 30 //screensaver popup time //\par
+//////////////////////////////////////////////\par
+#define analogInPin1 A0  // Analog input pin that the potentiometer is attached to\par
+#define analogInPin2 A1  // Analog input pin that the potentiometer is attached to\par
+uint16_t sensorValue1 = 0;\par
+uint16_t sensorValue2 = 0;\par
+uint8_t buff = 0;\par
+uint8_t selection = 0;\par
+uint8_t saverscr = 0;\par
+uint8_t buttonState = 0;\par
+long store1 = 0;\par
+uint8_t bitR1 = 0;\par
+uint8_t protoc = 0;\par
+uint8_t menu = 1;\par
+uint8_t sellect = 0;\par
+//////////////////////////////////////////////////////////////////////\par
+uint8_t eepromcount = 0;\par
+////////////////////////////////////////////////////////////////////////////////////////////////////\par
+int lastButtonState = LOW;   // the previous reading from the input pin\par
+long lastDebounceTime = 0;  // the last time the output pin was toggled\par
+long debounceDelay = 80;    // the debounce time; increase if the output flickers\par
+int reading = 0;\par
+////////////////////////////////////\par
+#include <RCSwitch.h>\par
+RCSwitch mySwitch = RCSwitch();\par
+////////////////////////////////////////////////\par
+void setup() \{\par
+  // IrReceiver.begin(12);\par
+  pinMode(pushButton, INPUT);\par
+  digitalWrite(pushButton, INPUT_PULLUP);\par
+#ifdef badusb\par
+  keyboard.begin();\par
+  delay(2000);\par
+#endif\par
+  pinMode(ledPinP, OUTPUT);\par
+  pinMode(signalPin, OUTPUT);\par
+  digitalWrite(signalPin, LOW);\par
+  /// Oled settings //////////////////////////\par
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);//3d or 3c\par
+  display.setTextColor(WHITE);\par
+  display.setTextSize(1);\par
+  display.clearDisplay();\par
+  /////////////////////////////////////\par
+  delay(100);\par
+  Serial.begin(9600);  // serial speed for BT device default 9600\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, FlipperLogo, 128, 64, 1);\par
+  display.display();\par
+  delay (1500);\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, Ardulogo, 128, 64, 1);\par
+  display.display();\par
+  delay (1000);\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, madeby, 128, 64, 1);\par
+  display.display();\par
+  delay (1500);\par
+  digitalWrite(ledPinP, LOW);\par
+  mySwitch.enableReceive(1);  // Receiver on interrupt 0 => that is pin #2\par
+  mySwitch.enableTransmit(signalPin);\par
+\}\par
+\par
+void loop() \{\par
+  sensorValue1 = analogRead(analogInPin1);\par
+  sensorValue2 = analogRead(analogInPin2);\par
+  buttonreading();\par
+  if (selection == 1) \{\par
+    menw();\par
+    return;\par
+  \}\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.print("0"); ////////// serial out !!\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.println("0"); ////////// serial out !!\par
+  saverscr = saverscr + 1;\par
+  if (saverscr >= screensavertime )screensaver();\par
+  ////// Serial BT input handler //////////////////////////////////////////////////\par
+  while (Serial.available() > 0) \{\par
+    buff = Serial.read();\par
+#ifdef debug\par
+    display.clearDisplay();\par
+    display.setCursor(0, 0);\par
+    display.print("Received ");\par
+    display.setCursor(0, 20);\par
+    display.print(buff);\par
+    display.display();\par
+    delay(1000);\par
+#endif\par
+    display.clearDisplay();\par
+    display.drawBitmap(0, 0, myBitmapC, 128, 64, 1);\par
+    display.display();\par
+    if (buff == 1)select = 1;\par
+    if (buff == 2)select = 2;\par
+    if (buff == 3)select = 3;\par
+  \}\par
+  if (select == 1) \{\par
+    rfrx();\par
+    return;\par
+  \}\par
+  if (select == 2) \{\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.print("4"); ////////// serial out !!\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.println(store1); ////////// serial out !!\par
+    display.clearDisplay();\par
+    display.drawBitmap(0, 0, myBitmapC, 128, 64, 1);\par
+    display.display();\par
+    delay(800);\par
+    mySwitch.send(store1, bitR1);\par
+    select = 0;\par
+  \}\par
+  if (select == 3) \{\par
+    select = 0;\par
+    return;\par
+  \}\par
+  //////////////////////////////////////////////////////////////////////////////////\par
+  digitalWrite(ledPinP, LOW);\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, FlipperLogo, 128, 64, 1);\par
+  display.display();\par
+  if (sensorValue1 > 600 )teslachargeport();\par
+  if (sensorValue1 < 500 )screensaver ();\par
+  if (sensorValue2 > 600 )TX1();//screensaver ();\par
+  if (sensorValue2 < 500 )TX2();//screensaver ();\par
+#ifdef debug1\par
+  if (sensorValue1 > 600 )Serial.println("UP");\par
+  if (sensorValue1 < 500 )Serial.println("DOWN");\par
+  if (sensorValue2 > 600 )Serial.println("RIGHT");\par
+  if (sensorValue2 < 500 )Serial.println("LEFT");\par
+#endif\par
+  digitalWrite(ledPinP, LOW);\par
+\}\par
+\par
+///////////////////////////////////////////////////////////////////////////////////////////////\par
+void teslachargeport() \{\par
+  for (uint8_t t = 0; t < transmissions; t++) \{\par
+    display.clearDisplay();\par
+    display.drawBitmap(0, 20, Teslalogo, 128, 36, 1);\par
+    display.display();\par
+    delay (500);\par
+    for (uint8_t i = 0; i < messageLength; i++) sendByte(sequence[i]);\par
+    digitalWrite(signalPin, LOW);\par
+    delay(messageDistance);\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.print("1"); ////////// serial out !!\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.println("0"); ////////// serial out !!\par
+    select = 0;\par
+  \}\par
+  display.clearDisplay();\par
+\}\par
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////// tesla send byte part ////\par
+void sendByte(uint8_t dataByte) \{\par
+  digitalWrite(ledPinP, HIGH);\par
+  for (int8_t bit = 7; bit >= 0; bit--) \{ // MSB\par
+    digitalWrite(signalPin, (dataByte & (1 << bit)) != 0 ? HIGH : LOW);\par
+    delayMicroseconds(pulseWidth);\par
+  \}\par
+  digitalWrite(ledPinP, HIGH);\par
+\}\par
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\par
+void TX1() \{\par
+  long number1 = readLongFromEEPROM(100);\par
+  int8_t Bitr1 = EEPROM.read(205);\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.print("4"); ////////// serial out !!\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.println(number1); ////////// serial out !!\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, myBitmapC, 128, 64, 1);\par
+  display.display();\par
+  delay(800);\par
+  mySwitch.send(number1, Bitr1);\par
+  select = 0;\par
+  display.setTextColor(WHITE);\par
+  display.setTextSize(1);\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, rximage, 128, 64, 1);\par
+  display.setCursor(68, 17);\par
+  display.print(number1);\par
+  display.setCursor(70, 29);\par
+  display.print("  FSK");\par
+  display.setCursor(70, 43);\par
+  display.print("TRANMIT");\par
+  display.display();\par
+  delay(3000);\par
+\}\par
+\par
+void TX2() \{\par
+  long number2 = readLongFromEEPROM(200);\par
+  int8_t Bitr2 = EEPROM.read(206);\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.print("4"); ////////// serial out !!\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.println(number2); ////////// serial out !!\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, myBitmapC, 128, 64, 1);\par
+  display.display();\par
+  delay(800);\par
+  mySwitch.send(number2, Bitr2);\par
+  select = 0;\par
+  display.setTextColor(WHITE);\par
+  display.setTextSize(1);\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, rximage, 128, 64, 1);\par
+  display.setCursor(68, 17);\par
+  display.print(number2);\par
+  display.setCursor(70, 29);\par
+  display.print("  FSK");\par
+  display.setCursor(70, 43);\par
+  display.print("TRANMIT");\par
+  display.display();\par
+  delay(3000);\par
+\}\par
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////\par
+void menw() \{\par
+  buttonreading();\par
+  delay(100);\par
+  if (sensorValue1 > 600 )menu = menu - 1;\par
+  if (sensorValue1 < 500 )menu = menu + 1;\par
+  if (menu > 3)menu = 1;\par
+  if (menu < 1)menu = 3;\par
+  display.setTextColor(WHITE);\par
+  display.setTextSize(1);\par
+  display.clearDisplay();\par
+  display.setTextColor(WHITE);\par
+  display.setCursor(10, 3);\par
+  display.print("    MENU SELECT  ");\par
+  display.setCursor(10, 18);\par
+  display.print("RX Code ");;\par
+  display.setCursor(10, 36);\par
+  display.print("TX Code ");\par
+  display.setCursor(10, 56);\par
+  display.print("Back");\par
+  display.drawBitmap(65, 15, badboy, 61, 65, 1);\par
+  display.drawLine(0, 14, 128, 14, WHITE);\par
+  display.drawLine(0, 30, 50, 30, WHITE);\par
+  display.drawLine(0, 50, 50, 50, WHITE);\par
+  display.display();\par
+  if (menu == 1) \{\par
+    display.setTextColor(WHITE);\par
+    display.setCursor(0, 20);\par
+    display.print("*");;\par
+    display.display();\par
+    delay(50);\par
+    display.setTextColor(BLACK);\par
+    display.setCursor(0, 20);\par
+    display.print(" ");\par
+    display.display();\par
+    delay(50);\par
+    select = 1;\par
+  \}\par
+  if (menu == 2) \{\par
+    display.setTextColor(WHITE);\par
+    display.setCursor(0, 40);\par
+    display.print("*");\par
+    display.display();\par
+    delay(50);\par
+    display.setTextColor(BLACK);\par
+    display.setCursor(0, 40);\par
+    display.print(" ");\par
+    display.display();\par
+    delay(50);\par
+    select = 2;\par
+  \}\par
+  if (menu == 3) \{\par
+    display.setTextColor(WHITE);\par
+    display.setCursor(0, 60);\par
+    display.print("*");\par
+    display.display();\par
+    delay(50);\par
+    display.setTextColor(BLACK);\par
+    display.setCursor(0, 60);\par
+    display.print(" ");\par
+    display.display();\par
+    delay(50);\par
+    select = 0;\par
+  \}\par
+\}\par
+////////////////////////////\par
+void screensaver () \{\par
+  saverscr = 0;\par
+  display.clearDisplay();\par
+  display.drawBitmap(0, 0, screensvrimage, 128, 64, 1);\par
+  display.display();\par
+  delay (1000);\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.print("2"); ////////// serial out !!\par
+  Serial.print("|"); ////////// serial out !!\par
+  Serial.println("0"); ////////// serial out !!\par
+\}\par
+//////////////////////////////////////////////////////////////////////////\par
+void rfrx () \{\par
+  if (mySwitch.available()) \{\par
+    saverscr = 0;\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.print("3"); ////////// serial out !!\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.println("0"); ////////// serial out !!\par
+    //  int value = mySwitch.getReceivedValue();\par
+    display.clearDisplay();\par
+    display.drawBitmap(64, 0, remoto, 64, 64, 1);\par
+    display.setCursor(0, 0);\par
+    display.print("Received ");\par
+    display.setCursor(0, 20);\par
+    display.print( mySwitch.getReceivedValue() );\par
+    display.setCursor(0, 30);\par
+    display.print( mySwitch.getReceivedBitlength() );\par
+    display.print("bit ");\par
+    display.setCursor(0, 50);\par
+    display.print("Protocol: ");\par
+    display.println(mySwitch.getReceivedProtocol() );\par
+    display.display();\par
+    store1 = mySwitch.getReceivedValue();\par
+    bitR1 = mySwitch.getReceivedBitlength();\par
+    protoc = mySwitch.getReceivedProtocol();\par
+    eepromcount = eepromcount + 1;\par
+    Serial.println(store1); ////////// serial out !!\par
+    delay(2000);\par
+    if (eepromcount >= 3)eepromcount = 1;\par
+    if (eepromcount == 1) \{\par
+      EEPROM.write(205, bitR1);\par
+      writeLongIntoEEPROM(100, store1);\par
+      display.clearDisplay();\par
+      display.setCursor(15, 20);\par
+      display.print("   Stored 1 ");\par
+      display.display();\par
+      delay(500);\par
+    \}\par
+    if (eepromcount == 2) \{\par
+      EEPROM.write(206, bitR1);\par
+      writeLongIntoEEPROM(200, store1);\par
+      display.clearDisplay();\par
+      display.setCursor(15, 20);\par
+      display.print("  Stored 2 ");\par
+      display.display();\par
+      delay(500);\par
+    \}\par
+\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.print("3"); ////////// serial out !!\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.println(store1); ////////// serial out !!\par
+    if (store1 == 0) \{\par
+      display.clearDisplay();\par
+      display.setCursor(0, 20);\par
+      display.print("Unknown encoding");\par
+      display.display();\par
+      delay(2500);\par
+    \}\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.print("4"); ////////// serial out !!\par
+    Serial.print("|"); ////////// serial out !!\par
+    Serial.println("0"); ////////// serial out !!\par
+    mySwitch.resetAvailable();\par
+  \}\par
+  delay(100);\par
+  display.setTextColor(WHITE);\par
+  display.setTextSize(1);\par
+  display.clearDisplay();\par
+  display.setTextColor(WHITE);\par
+  display.setCursor(5, 3);\par
+  display.print("  RECEIVED RF CODE ");\par
+  display.setCursor(10, 20);\par
+  display.print(bitR1);;\par
+  display.setCursor(80, 20);\par
+  display.print("BITS");;\par
+  display.setCursor(10, 30);\par
+  display.print(store1);\par
+  display.setCursor(80, 30);\par
+  display.print("CODE");\par
+  display.setCursor(10, 40);\par
+  display.print(protoc);\par
+  display.setCursor(80, 40);\par
+  display.print("PROTOCAL");\par
+  display.drawLine(0, 14, 128, 14, WHITE);\par
+  display.drawLine(0, 52, 128, 52, WHITE);\par
+  display.display();\par
+  delay(100);\par
+  display.clearDisplay();\par
+\}\par
+\par
+void writeLongIntoEEPROM(int address, long number)\par
+\{\par
+  EEPROM.write(address, (number >> 24) & 0xFF);\par
+  EEPROM.write(address + 1, (number >> 16) & 0xFF);\par
+  EEPROM.write(address + 2, (number >> 8) & 0xFF);\par
+  EEPROM.write(address + 3, number & 0xFF);\par
+\}\par
+\par
+long readLongFromEEPROM(int address)\par
+\{\par
+  return ((long)EEPROM.read(address) << 24) +\par
+         ((long)EEPROM.read(address + 1) << 16) +\par
+         ((long)EEPROM.read(address + 2) << 8) +\par
+         (long)EEPROM.read(address + 3);\par
+\}\par
+void buttonreading () \{\par
+  lastButtonState = HIGH;\par
+  reading = digitalRead(pushButton);\par
+  if (reading != lastButtonState) \{\par
+    lastDebounceTime = millis();\par
+  \}\par
+\par
+  if ((millis() - lastDebounceTime) > debounceDelay) \{\par
+  \}\par
+\par
+  lastButtonState = reading;\par
+  if (reading == LOW) \{\par
+    display.clearDisplay();\par
+    display.drawBitmap(35, 15, Thumb, 64, 64, 1);\par
+    display.display();\par
+    delay(200);\par
+    if (selection == 1) \{\par
+      selection = 0;\par
+      return;\par
+    \}\par
+    selection = 1;\par
+  \}\par
+\}\par
+}
+ 
