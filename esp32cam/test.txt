@@ -1,0 +1,100 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DHT.h> // Include the DHT library
+#include <RtcDS3231.h> // Include the RTC library
+#include <SSD1306Wire.h>
+#include <TimeLib.h>
+#include <Timezone.h>
+
+const char *ssid = "Sierra Kilo Weather Station"; // Change to your desired network name
+const char *password = ""; // Empty for open network
+
+const int DHT_PIN = 14; // Pin connected to DHT sensor
+const int DHT_TYPE = DHT11; // Type of DHT sensor (DHT11 or DHT22)
+
+WebServer server(80);
+DHT dht(DHT_PIN, DHT_TYPE); // Initialize DHT object with pin number and type
+
+// Define SSD1306 display object
+#define OLED_ADDRESS 0x3c
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define OLED_RESET -1 // Reset pin not used with this OLED display
+SSD1306Wire display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
+
+// Define RTC module object
+RtcDS3231<TwoWire> rtc(Wire); // RTC module using the Wire library (default for ESP32)
+
+TimeChangeRule usPST = {"PST", Last, Sun, Nov, 2, -480}; // Pacific Standard Time (UTC -8 hours)
+TimeChangeRule usPDT = {"PDT", Second, Sun, Mar, 2, -420}; // Pacific Daylight Time (UTC -7 hours)
+Timezone usPacific(usPST, usPDT);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Connect to Wi-Fi
+  WiFi.softAP(ssid, password);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.println(IP);
+
+  // Initialize DHT sensor
+  dht.begin();
+
+  // Initialize RTC module
+  rtc.Begin(); // Initialize RTC module
+
+  // Initialize OLED display
+  display.init();
+  delay(100); // Add a delay after initializing the display
+  display.clear();
+  display.display();
+  display.setFont(ArialMT_Plain_10);
+
+  // Web server route handlers
+  server.on("/", handleRoot);
+
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
+
+void handleRoot() {
+  // Read temperature and humidity from DHT sensor
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+  // Check if the DHT sensor read valid data
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("Failed to read from DHT sensor!");
+    temperature = 0; // Set temperature to 0 to indicate an error
+    humidity = 0; // Set humidity to 0 to indicate an error
+  }
+
+  // Read time from RTC module
+  RtcDateTime now = rtc.GetDateTime();
+
+  // Get the current time in the Los Angeles timezone
+  time_t localTime = now.Epoch32Time();
+  localTime = usPacific.toLocal(localTime);
+
+  // Generate HTML webpage with temperature, humidity, and time values
+  String webpage = "<!DOCTYPE html><html><head><title>Sierra Kilo Weather Station</title></head><body>";
+  webpage += "<h1>Sierra Kilo Weather Station</h1>";
+  webpage += "<p>Time: " + String(hour(localTime)) + ":" + String(minute(localTime)) + ":" + String(second(localTime)) + "</p>";
+  webpage += "<p>Temperature: " + String(temperature) + " °C</p>";
+  webpage += "<p>Humidity: " + String(humidity) + " %</p>";
+  webpage += "</body></html>";
+
+  // Display temperature and humidity on SSD1306 display
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 0, "Temperature: " + String(temperature) + " °C");
+  display.drawString(0, 16, "Humidity: " + String(humidity) + " %");
+  display.display();
+
+  // Send HTML webpage as response to client
+  server.send(200, "text/html", webpage);
+}

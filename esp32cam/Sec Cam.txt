@@ -1,0 +1,60 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <SD_MMC.h>
+
+const char* ssid = "your_wifi_ssid";
+const char* password = "your_wifi_password";
+
+AsyncWebServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize SD card
+  if (!SD_MMC.begin("/sdcard", true)) {
+    Serial.println("Card Mount Failed");
+    return;
+  }
+  Serial.println("Card Mounted");
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // Define routes
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(SD_MMC, "/sdcard/index.html", "text/html");
+  });
+
+  server.on("/videos", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String videosList = "<h2>Video Files</h2><ul>";
+    File dir = SD_MMC.open("/sdcard/videos");
+    while (File file = dir.openNextFile()) {
+      videosList += "<li><a href='/video?file=" + file.name() + "'>" + file.name() + "</a></li>";
+    }
+    videosList += "</ul>";
+    request->send(200, "text/html", videosList);
+  });
+
+  server.on("/video", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String filePath = request->arg("file");
+    File file = SD_MMC.open(filePath);
+    if (!file) {
+      request->send(404, "text/plain", "File not found");
+      return;
+    }
+    request->send(SD_MMC, filePath, "video/mp4");
+  });
+
+  // Start server
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+  
+}

@@ -1,0 +1,59 @@
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include "esp_camera.h"
+
+// Camera configuration
+#define CAMERA_MODEL_AI_THINKER
+
+const char* ssid = "Your_WiFi_SSID"; // Wi-Fi SSID
+const char* password = "Your_WiFi_Password"; // Wi-Fi password
+const int serverPort = 80; // Port for the server to listen on
+
+AsyncWebServer server(serverPort);
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize camera
+  camera_config_t config;
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x", err);
+    return;
+  }
+  Serial.println("Camera initialized");
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  // Define routes
+  server.on("/startRecording", HTTP_GET, handleStartRecording);
+
+  // Start server
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+  // Empty loop
+}
+
+void handleStartRecording(AsyncWebServerRequest *request) {
+  // Your code to start recording
+  // Example: startRecording();
+  request->send(200, "text/plain", "Recording started");
+}
+
+void startRecording() {
+  // Your code to start recording
+}
+
+void stopRecording() {
+  // Your code to stop recording
+}
