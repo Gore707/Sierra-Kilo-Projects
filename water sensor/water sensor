@@ -1,0 +1,72 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+
+#define MOISTURE_PIN A0 // Pin connected to the soil moisture sensor
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+unsigned long previousDisplayTime = 0; // Variable to track previous display time
+const unsigned long displayInterval = 1000; // Interval between display updates in milliseconds
+
+void setup() {
+  Serial.begin(9600);
+  
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    while (true); // Stay in an infinite loop if display initialization fails
+  }
+
+  // Display boot message
+  display.display();
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(10,10);
+  display.println("Plant Water Sensor");
+  display.setCursor(40,30);
+  display.println("V0.1");
+  display.setCursor(20,50);
+  display.println("Sierra Kilo Labs");
+  display.display();
+  delay(3000); // Pause for 3 seconds
+  display.clearDisplay();
+}
+
+void loop() {
+  // Read the moisture level from the sensor
+  int moistureLevel = analogRead(MOISTURE_PIN);
+  
+  // Convert the analog reading to percentage
+  int percentage = map(moistureLevel, 0, 1023, 0, 100);
+
+  // Display moisture level and plant status at regular intervals
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousDisplayTime >= displayInterval) {
+    previousDisplayTime = currentMillis;
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println("Soil Water %");
+    display.println(percentage);
+
+    // Display plant status
+    if (percentage >= 90) {
+      display.println("Plant Status: Full");
+    } else if (percentage >= 60 && percentage <= 89) {
+      display.println("Plant Status: Happy");
+    } else {
+      display.println("Plant Status: Hungry");
+    }
+
+    display.display(); // Display content on OLED
+  }
+
+  // Add other functionalities or sensor readings here
+  
+}
