@@ -1,0 +1,232 @@
+#include <WiFi.h>
+#include <DHT.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <SD.h>
+#include <SoftwareSerial.h> // Include the SoftwareSerial library for HC-05
+
+#define DHT_PIN 27  // Changed to pin 27 for DHT sensor
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define OLED_RESET -1
+#define SD_CS 5  // Changed to pin 5 for SD card CS
+
+// Bluetooth module pins
+#define BT_RX 32 // Connect HC-05 TX to pin 32
+#define BT_TX 35 // Connect HC-05 RX to pin 35
+
+SoftwareSerial HC05Serial(BT_RX, BT_TX); // RX, TX
+
+const char* ssid = "Sierra Kilo Hub"; // Changed SSID
+// No password for an open network
+
+DHT dht(DHT_PIN, DHT11);
+Adafruit_SSD1306 display(OLED_RESET);
+WiFiServer server(80);
+
+// Variable to track if the boot screen has been displayed
+bool bootScreenDisplayed = false;
+
+// Static IP configuration
+IPAddress local_IP(192, 168, 1, 1); // Set the desired IP address
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
+
+// Global variables to store temperature and humidity
+float temperature = 0.0;
+float humidity = 0.0;
+
+// Declaration of serveFile function
+void serveFile(WiFiClient client);
+
+// Function to handle file upload
+void handleFileUpload(WiFiClient client, String filename) {
+  if (filename != "" && client.connected()) {
+    // Create or open the file on the SD card for writing
+    File file = SD.open(filename, FILE_WRITE);
+    if (!file) {
+      client.println("Failed to create file.");
+      return;
+    }
+
+    // Read data from the client and write it to the file
+    while (client.available()) {
+      file.write(client.read());
+    }
+
+    // Close the file
+    file.close();
+
+    // Inform the client that the file upload was successful
+    client.println("File uploaded successfully.");
+  }
+}
+
+// Function to handle incoming client requests
+void handleClient(WiFiClient client) {
+  String req = client.readStringUntil('\r');
+  if (req.indexOf("POST /upload") != -1) {
+    // Extract the filename from the request
+    int filenameStart = req.indexOf("filename=\"") + 10;
+    int filenameEnd = req.indexOf("\"", filenameStart);
+    String filename = req.substring(filenameStart, filenameEnd);
+    // Handle the file upload
+    handleFileUpload(client, filename);
+  } else {
+    // Serve the main page or other content
+    serveFile(client);
+  }
+}
+
+// Function to serve the main page
+void serveFile(WiFiClient client) {
+  // HTTP response header
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");  
+  client.println();
+
+  // HTML content
+  client.println("<!DOCTYPE HTML>");
+  client.println("<html>");
+  client.println("<head><title>Sierra Kilo Hub</title></head>");
+  client.println("<body>");
+  client.println("<h1>Welcome to Sierra Kilo Hub</h1>");
+  client.println("<p>Data:</p>");
+  client.print("<p>CLI: ");
+  client.print(WiFi.softAPgetStationNum()); // Display number of WiFi clients connected
+  client.print("     BT: ");
+  client.println(getNumBluetoothClients()); // Display number of Bluetooth clients
+  client.print("GB Free: ");
+  client.print(getFreeSpaceGB()); // Display free space on SD card in GB
+  client.println(" GB</p>");
+  client.print("<p>Temp: ");
+  client.print(temperature * 9 / 5 + 32); // Convert Celsius to Fahrenheit
+  client.println(" &deg;F</p>");
+  client.print("<p>Humid: ");
+  client.print(humidity);
+  client.println(" %</p>");
+  client.println("</body>");
+  client.println("</html>");
+}
+
+// Function to display the boot screen
+void displayBootScreen() {
+  // Code to display the boot screen message
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Initializing File Hub");
+  display.println("Loading Libraries...");
+  display.println("(c) Sierra Kilo Labs");
+  display.display();
+}
+
+// Function to display the main screen
+void displayMainScreen() {
+  // Code to display the main screen
+  temperature = dht.readTemperature(); // Read temperature from DHT sensor
+  humidity = dht.readHumidity();       // Read humidity from DHT sensor
+  uint8_t numClients = WiFi.softAPgetStationNum(); // Get number of clients connected
+
+  display.clearDisplay();  // Clear display
+  display.setTextSize(1);  // Set text size
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0); // Set cursor position
+
+  // Display number of clients connected for both WiFi and Bluetooth
+  display.print("CLI: ");
+  display.print(numClients); // Display number of WiFi clients connected
+  display.print("     BT: ");
+  display.println(getNumBluetoothClients()); // Display number of Bluetooth clients
+
+  // Display free space on SD card in GB
+  display.print("GB Free: ");
+  display.print(getFreeSpaceGB()); // Display free space on SD card in GB
+  display.println(" GB");
+
+  // Display temperature
+  display.print("Temp: ");
+  display.println(temperature * 9 / 5 + 32);
+
+  // Display humidity
+  display.print("Humid: ");
+  display.println(humidity);
+
+  display.display(); // Update display
+}
+
+// Function to get the number of Bluetooth clients connected
+int getNumBluetoothClients() {
+  HC05Serial.println("AT+DISC?");
+  delay(500); // Wait for the module to respond
+  int count = 0;
+  while (HC05Serial.available()) {
+    if (HC05Serial.readStringUntil('\n').startsWith("+INQ")) {
+      count++;
+    }
+  }
+  return count;
+}
+
+// Function to calculate free space on SD card in GB
+float getFreeSpaceGB() {
+  uint64_t totalBytes = SD.totalBytes();
+  uint64_t usedBytes = SD.usedBytes();
+  float freeSpaceGB = (totalBytes - usedBytes) / (1024.0 * 1024.0 * 1024.0);
+  return freeSpaceGB;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  dht.begin();
+
+  // Initialize I2C communication for OLED display
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.display();
+
+  // Initialize HC-05 Serial communication
+  HC05Serial.begin(9600);
+
+  // Configure static IP address
+  WiFi.softAPConfig(local_IP, gateway, subnet); // Configure static IP
+  WiFi.softAP(ssid); // No password for an open network
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  server.begin();
+
+  if (!SD.begin(SD_CS)) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("SD Card initialization failed!");
+    display.display();
+    while (true); // Halt the program
+  }
+}
+
+void loop() {
+  if (!bootScreenDisplayed) {
+    displayBootScreen();
+    bootScreenDisplayed = true;
+  } else {
+    displayMainScreen();
+  }
+
+  // Handle multiple client connections
+  WiFiClient client = server.available();
+  if (client) {
+    handleClient(client);
+  }
+
+  // Your additional Bluetooth handling code here...
+}
