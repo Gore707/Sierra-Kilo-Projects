@@ -1,0 +1,92 @@
+#include <Arduino.h>
+#include <RH_ASK.h> // 433MHz RF library
+#include <SoftwareSerial.h> // Bluetooth library
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h> // OLED library
+#include <IRremote.h> // IR library
+
+#define JOYSTICK_X A0 // Joystick X-axis pin
+#define JOYSTICK_Y A1 // Joystick Y-axis pin
+#define TX_PIN 13 // 433MHz transmitter pin
+#define RX_PIN 12 // 433MHz receiver pin
+#define BLUETOOTH_RX 4 // Bluetooth RX pin
+#define BLUETOOTH_TX 5 // Bluetooth TX pin
+#define IR_TRANSMITTER_PIN 14 // IR transmitter pin
+#define IR_RECEIVER_PIN 16 // IR receiver pin
+
+RH_ASK rf_driver(2000, RX_PIN, TX_PIN, 0); // Initialize 433MHz RF driver
+SoftwareSerial bluetooth(BLUETOOTH_RX, BLUETOOTH_TX); // Initialize Bluetooth module
+Adafruit_SSD1306 display(128, 64, &Wire, -1); // Initialize OLED display
+IRsend irsend(IR_TRANSMITTER_PIN); // Initialize IR transmitter
+IRrecv irrecv(IR_RECEIVER_PIN); // Initialize IR receiver
+
+void setup() {
+  Serial.begin(9600);
+  
+  if (!rf_driver.init()) {
+    Serial.println("RF driver init failed");
+  }
+
+  bluetooth.begin(9600);
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  display.display();
+  delay(2000);
+  display.clearDisplay();
+
+  irrecv.enableIRIn(); // Start the IR receiver
+}
+
+void loop() {
+  int joystick_x = analogRead(JOYSTICK_X);
+  int joystick_y = analogRead(JOYSTICK_Y);
+  Serial.print("Joystick position X: ");
+  Serial.print(joystick_x);
+  Serial.print(", Y: ");
+  Serial.println(joystick_y);
+
+  if (bluetooth.available()) {
+    char receivedChar = bluetooth.read();
+    Serial.println(receivedChar);
+  }
+
+  sendDataVia433MHz();
+  receiveDataVia433MHz();
+
+  // Check for IR signal
+  if (irrecv.decode(&results)) {
+    // Process IR signal
+    irrecv.resume(); // Receive the next value
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println("Joystick X:");
+  display.println(joystick_x);
+  display.println("Joystick Y:");
+  display.println(joystick_y);
+  display.display();
+  delay(100);
+}
+
+void sendDataVia433MHz() {
+  const char *dataToSend = "Hello, World!";
+  rf_driver.send((uint8_t *)dataToSend, strlen(dataToSend));
+  rf_driver.waitPacketSent();
+}
+
+void receiveDataVia433MHz() {
+  uint8_t buf[50];
+  uint8_t buflen = sizeof(buf);
+  if (rf_driver.recv(buf, &buflen)) {
+    Serial.print("Received: ");
+    Serial.println((char*)buf);
+  }
+}
+
