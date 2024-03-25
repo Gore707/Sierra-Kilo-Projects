@@ -1,0 +1,56 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define DS3231_I2C_ADDRESS 0x68
+
+#define DHTPIN 7        // Pin connected to the DHT11 sensor
+#define DHTTYPE DHT11   // Type of the DHT sensor
+#include <DHT.h>
+DHT dht(DHTPIN, DHTTYPE);
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+
+  // Initialize DHT sensor
+  dht.begin();
+
+  // Initialize OLED display
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+
+  // Check if DS3231 module is connected
+  Wire.beginTransmission(DS3231_I2C_ADDRESS);
+  if (Wire.endTransmission() == 0) {
+    Serial.println("DS3231 module found.");
+  } else {
+    Serial.println("DS3231 module not found. Check wiring.");
+    while (1); // Stop here if DS3231 is not found
+  }
+}
+
+void loop() {
+  // Read temperature and humidity from DHT11 sensor
+  float temperature = dht.readTemperature(); // Celsius
+  float humidity = dht.readHumidity();
+
+  // Display temperature and humidity on OLED display
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("Temperature: ");
+  display.print(temperature);
+  display.println(" °C");
+  display.print("Humidity: ");
+  display.print(humidity);
+  display.println("%");
+  display.display();
+
+  delay(1000);  // Delay to update display
+}
